@@ -20,7 +20,7 @@ impl Wpd {
         Ok(data)
     }
 
-    pub fn to_data_vecs(&self) -> Vec<DataVector> {
+    pub fn to_data_vecs(&self) -> Vec<DataVector<f64,f64>> {
         self.datasets.iter().map(|ds| ds.to_data_vec()).collect()
     }
 
@@ -35,20 +35,19 @@ pub struct DataSet {
 }
 
 impl DataSet {
-    pub fn to_data_vec(&self) -> DataVector {
+    pub fn to_data_vec(&self) -> DataVector<f64,f64> {
         let mut values = Vec::with_capacity(self.data.len());
         for dp in self.data.iter() {
             values.push(Point{x:dp.x(), y: dp.y()});
         }
         values.sort();
-        DataVector {
-            name: self.name.clone(),
-            x_name: "Time".to_string(),
-            x_units: "s".to_string(),
-            y_name: "Time".to_string(),
-            y_units: "kW".to_string(),
-            values,
-        }
+        DataVector::new(
+            self.name.clone(),
+            "Time".to_string(),
+            "s".to_string(),
+            "Time".to_string(),
+            "kW".to_string(),
+            values)
     }
 }
 
@@ -120,10 +119,4 @@ pub fn minimum(samples: &Vec<f64>) -> f64 {
         }
     }
     min
-}
-
-fn create_hrr_ramp(name: String, data: &DataVector) {
-    for dp in data.values.iter() {
-        println!("&RAMP ID='{}' T={}, F={} /", name, dp.x, dp.y);
-    }
 }
