@@ -1,10 +1,11 @@
 use serde::{Serialize, Deserialize};
 use std::fs::File;
 use data_vector::{DataVector, Point};
-use std::path::Path;
+use std::path::{PathBuf, Path};
+use tar::Archive;
 
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Wpd {
     pub version: (u32,u32),
     #[serde(rename = "axesColl")]
@@ -20,13 +21,68 @@ impl Wpd {
         Ok(data)
     }
 
+    pub fn from_tar_file<P: AsRef<Path>>(path: P) -> Result<Self, std::io::Error> {
+        let file = File::open(path)?;
+        let mut archive = Archive::new(file);
+        // At the root there should be an info.json file that tells us about the
+        // file.
+        let mut entries = archive.entries()?;
+        let info: Info = {
+            let info_entry = loop {
+                if let Some(entry) = entries.next() {
+                    let entry = entry?;
+                    if entry.path()?.file_name().unwrap() == &PathBuf::from("info.json") {
+                        break entry;
+                    }
+                } else {
+                    panic!("could not find info entry")
+                }
+            };
+            // let mut s = String::new();
+            // info_entry.read_to_string(&mut s).unwrap();
+            serde_json::from_reader(info_entry).unwrap()
+        };
+
+        let wpd: Wpd = {
+            let json_entry = loop {
+                if let Some(entry) = entries.next() {
+                    let entry = entry?;
+                    if entry.path()?.file_name().unwrap() == &PathBuf::from(&info.json) {
+                        break entry;
+                    }
+                } else {
+                    panic!("could not find wpd entry")
+                }
+            };
+            // let mut s = String::new();
+            // info_entry.read_to_string(&mut s).unwrap();
+            serde_json::from_reader(json_entry).unwrap()
+        };
+        Ok(wpd)
+    }
+
     pub fn to_data_vecs(&self) -> Vec<DataVector<f64,f64>> {
         self.datasets.iter().map(|ds| ds.to_data_vec()).collect()
     }
 
+    pub fn get(&self, name: &str) -> Option<&DataSet> {
+        for dv in self.datasets.iter() {
+            if dv.name == name {
+                return Some(dv);
+            }
+        }
+        None
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct Info {
+    pub version: Vec<usize>,
+    pub json: String,
+    pub images: Vec<String>
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialOrd, PartialEq)]
 pub struct DataSet {
     pub name: String,
     #[serde(rename = "metadataKeys")]
@@ -43,15 +99,15 @@ impl DataSet {
         values.sort();
         DataVector::new(
             self.name.clone(),
-            "Time".to_string(),
-            "s".to_string(),
-            "Time".to_string(),
-            "kW".to_string(),
+            "-".to_string(),
+            "-".to_string(),
+            "-".to_string(),
+            "-".to_string(),
             values)
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialOrd, PartialEq)]
 pub struct Axes {
     pub name: String,
     #[serde(rename = "type")]
@@ -64,7 +120,7 @@ pub struct Axes {
     pub calibration_points: Vec<CalibrationPoint>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialOrd, PartialEq)]
 pub struct CalibrationPoint {
     pub px: f64,
     pub py: f64,
@@ -73,7 +129,7 @@ pub struct CalibrationPoint {
     pub dz: Option<String>,
 }
 
-#[derive(Copy, Clone, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, Serialize, Deserialize, Debug, PartialOrd, PartialEq)]
 pub struct DataPoint {
     pub x: f64,
     pub y: f64,
